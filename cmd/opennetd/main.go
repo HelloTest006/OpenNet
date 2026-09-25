@@ -20,6 +20,7 @@
 // handshake.
 //
 //	opennetd pack -out slice.opennet page.html style.css
+//	opennetd crawl -peer 127.0.0.1:9731 -name news -out slice.opennet
 package main
 
 import (
@@ -33,6 +34,7 @@ import (
 
 	"opennet/internal/cid"
 	"opennet/internal/container"
+	"opennet/internal/crawl"
 	"opennet/internal/frame"
 	"opennet/internal/manifest"
 	"opennet/internal/member"
@@ -57,13 +59,15 @@ func main() {
 		fetch(os.Args[2:])
 	case "pack":
 		pack(os.Args[2:])
+	case "crawl":
+		crawlSites(os.Args[2:])
 	default:
 		usage()
 	}
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: opennetd authority|identity|serve|fetch|pack [flags]")
+	fmt.Fprintln(os.Stderr, "usage: opennetd authority|identity|serve|fetch|pack|crawl [flags]")
 	os.Exit(2)
 }
 
@@ -306,6 +310,60 @@ func pack(args []string) {
 	}
 	log.Printf("wrote %s: %d files, %d distinct blocks, %d bytes (%.0f%% of raw)",
 		*out, fs.NArg(), w.Count(), n, pct(int(n), raw))
+}
+
+// crawlSites mirrors sites from one peer into an .opennet file, starting from
+// the names given and following opennet: links it finds in their pages.
+func crawlSites(args []string) {
+	fs := flag.NewFlagSet("crawl", flag.ExitOnError)
+	peer := fs.String("peer", "127.0.0.1:9731", "node to crawl")
+	names := fs.String("name", "", "comma-separated site names to start from")
+	out := fs.String("out", "slice.opennet", "file to write the corpus to")
+	ident := fs.String("identity", "", "identity file; a fresh uncertified one is used if empty")
+	trust := fs.String("trust", "", "comma-separated authority files whose members are admitted")
+	depth := fs.Int("depth", crawl.DefaultMaxDepth, "how many links away from -name to follow")
+	maxSites := fs.Int("max-sites", crawl.DefaultMaxSites, "most sites to mirror")
+	maxBytes := fs.Int64("max-bytes", crawl.DefaultMaxBytes, "most raw bytes to keep")
+	fs.Parse(args)
+	if *names == "" {
+		log.Fatal("crawl: -name is required")
+	}
+
+	c, err := transport.TCP{}.Dial(*peer)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close()
+
+	node := loadNode(*ident, loadTrust(split(*trust)))
+	sess, err := node.Handshake(c)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	res, err := crawl.Corpus(sess, crawl.Options{
+		Seeds:    split(*names),
+		MaxSites: *maxSites,
+		MaxBytes: *maxBytes,
+		MaxDepth: *depth,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	w := container.NewWriter()
+	crawl.Write(w, res)
+	n, err := w.WriteFile(*out)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("wrote %s: %d sites, %d blocks, %d bytes", *out, len(res.Sites), w.Count(), n)
+	if res.Skipped > 0 {
+		log.Printf("skipped %d sites the peer did not carry, that failed their signature, or that would have broken a limit", res.Skipped)
+	}
+	if res.Truncated {
+		log.Printf("stopped on a limit: -max-sites %d, -max-bytes %d, -depth %d", *maxSites, *maxBytes, *depth)
+	}
 }
 
 func pct(stored, raw int) float64 {

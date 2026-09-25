@@ -73,12 +73,13 @@ GOOS=android GOARCH=arm64 go build -o opennetd ./cmd/opennetd
 
 `go test ./...` runs the suite. It covers the frame codec, content addressing,
 the handshake with membership enforced, signed manifests, block transfer that
-rejects a block whose bytes don't match its ID, and the `.opennet` container
-including a corpus-size benchmark.
+rejects a block whose bytes don't match its ID, the `.opennet` container
+including a corpus-size benchmark, and the crawler, including that it refuses a
+manifest whose signature does not verify.
 
 ## Usage
 
-`opennetd` has five subcommands.
+`opennetd` has six subcommands.
 
 ```
 opennetd authority   create a certificate authority
@@ -86,6 +87,7 @@ opennetd identity    create a node identity and its certificate
 opennetd serve       serve a site to peers
 opennetd fetch       fetch a site from a peer
 opennetd pack        pack files into an .opennet corpus
+opennetd crawl       crawl sites from a peer into an .opennet corpus
 ```
 
 Run any of them with `-h` to see its flags.
@@ -201,6 +203,45 @@ raw input. The count of blocks can be lower than the count of files because
 identical content is stored once, so repeating an asset across many pages costs
 nothing the second time.
 
+### Crawl a peer
+
+`crawl` does the same job from the other direction: instead of packing files you
+already have, it asks a peer for sites and writes what comes back into one
+`.opennet` file.
+
+```
+opennetd crawl -peer 127.0.0.1:9731 -name news -out slice.opennet
+```
+
+`-name` is required and takes a comma-separated list, so one crawl can start
+from several sites. From each one it fetches the signed manifest, checks the
+signature, fetches every block the manifest names, and then looks inside those
+blocks for links of the form `opennet:sport`. A page that contains one is
+pointing at another site by name, and the crawl asks the same peer for it next.
+Ordinary web URLs in the same page are ignored, because they are not sites this
+network carries. A site's own pages and assets are not discovered this way
+either: the manifest already lists every block the site is made of, so they are
+fetched whole.
+
+The crawl stops on its own rather than following links without bound. It will
+mirror at most 1000 sites, keep at most 500 MB of raw content, and follow links
+at most 4 steps away from the sites named with `-name`. Each of those is a
+flag: `-max-sites`, `-max-bytes`, and `-depth`. A site that would push the
+corpus past a limit is left out entirely instead of stored in part, and so is a
+single block bigger than 4 MB, which is nearly always an accident. When the
+command stops for one of these reasons it says so, along with how many sites it
+skipped. A site is skipped when the peer does not carry it, when the manifest
+signature does not verify, when the manifest's name is not the name that was
+asked for, or when keeping it would break a limit.
+
+A connection that drops is not treated as a skip. The command stops and reports
+the error, because a half-finished crawl from a peer that went away is a
+different outcome from a peer that answered and had nothing.
+
+`-identity` and `-trust` work exactly as they do for `fetch`, and the same
+handshake rules apply: with `-trust` set, a peer whose certificate does not
+check out never gets as far as being asked for a site.
+
 On a test corpus of 2,000 small pages that all shared one template, the result
 was about 160 bytes per site, roughly four times smaller than the raw pages.
 Read that number for what it measures: pages that share nearly all of their
@@ -294,7 +335,7 @@ at all; no certificate stops someone transmitting noise on a channel.
 ## Repository layout
 
 ```
-cmd/opennetd          the node: the five subcommands above
+cmd/opennetd          the node: the six subcommands above
 internal/cid          content IDs, a 32-byte BLAKE3 of the raw bytes
 internal/frame        the length-prefixed frame codec and the six frame types
 internal/store        the content-addressed block store
@@ -302,6 +343,7 @@ internal/container    the .opennet reader and writer
 internal/member       identities, certificate authorities, and verification
 internal/manifest     signing a site manifest and checking the signature
 internal/session      the handshake, membership enforcement, and block transfer
+internal/crawl        mirroring sites from a peer into an .opennet corpus
 internal/transport    the Transport interface; TCP is implemented, Wi-Fi Direct
                       and the custom radio are stubs behind it
 internal/radio        the interface a custom radio module implements
@@ -339,9 +381,9 @@ Not built yet:
   cannot.
 - Set reconciliation, so two nodes exchange a compact summary of what they hold
   and transfer only the difference instead of comparing lists.
-- Serving a site from an `.opennet` file. `pack` writes the file and the reader
-  can pull any block back out, but `serve` currently publishes one page from a
-  plain file.
+- Serving a site from an `.opennet` file. `pack` and `crawl` both write the
+  file and the reader can pull any block back out, but `serve` currently
+  publishes one page from a plain file.
 - Multi-file sites on the command line. The manifest already lists every block
   in a site; `serve` and `fetch` only handle the entry page so far.
 - The Wi-Fi Direct driver and the custom-radio driver. Both have their
