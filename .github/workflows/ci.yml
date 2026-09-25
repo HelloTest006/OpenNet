@@ -62,7 +62,9 @@ jobs:
   # build job compiles, so a target that passes CI is a target someone can
   # actually run. Android is a raw executable rather than an .apk: a phone app
   # needs an SDK and a manifest this repo does not have, and the binary runs
-  # under Termux as-is.
+  # under Termux as-is. There is no android/arm build because Go will not link
+  # that target without cgo, which would drag an NDK into CI for phones that
+  # predate 2017; the linux/arm build covers old 32-bit ARM boards instead.
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v')
@@ -82,7 +84,6 @@ jobs:
           - { goos: darwin,  goarch: arm64, goarm: "",  suffix: "" }
           - { goos: freebsd, goarch: amd64, goarm: "",  suffix: "" }
           - { goos: android, goarch: arm64, goarm: "",  suffix: "" }
-          - { goos: android, goarch: arm,   goarm: "7", suffix: "" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

@@ -107,13 +107,15 @@ each of them to the releases page:
 | `opennetd-darwin-arm64` | Apple silicon Macs |
 | `opennetd-freebsd-amd64` | FreeBSD |
 | `opennetd-android-arm64` | Phones from the last decade, via Termux |
-| `opennetd-android-arm-v7` | Older 32-bit phones, via Termux |
 
-There is no `.apk`. A phone app needs an Android SDK, a manifest, and a
-signing key this repository does not have, and the protocol has no Wi-Fi
-Direct driver yet, so the app would do nothing the binary doesn't. The Android
-binaries run as-is under [Termux](https://termux.dev). When the radio drivers
-exist, an `.apk` belongs in the release alongside them.
+There is no `.apk`, and no 32-bit Android build. A phone app needs an Android
+SDK, a manifest, and a signing key this repository does not have, and the
+protocol has no Wi-Fi Direct driver yet, so the app would do nothing the
+binary doesn't. The Android binary runs as-is under [Termux](https://termux.dev).
+The 32-bit Android target is absent because Go refuses to link it without
+cgo, which would mean shipping an NDK cross-compiler in CI for a handful of
+phones that predate 2017; the 32-bit Linux build above covers old ARM boards.
+When the radio drivers exist, an `.apk` belongs in the release alongside them.
 
 ## Status
 
