@@ -93,8 +93,27 @@ GOOS=android GOARCH=arm64 go build -o opennetd ./cmd/opennetd
 ```
 
 GitHub Actions runs the tests and builds linux, windows, darwin, freebsd, and
-android targets on every push. Tagging a release `v*` publishes binaries for
-linux, windows, and macOS on both amd64 and arm64.
+android targets on every push. Tagging a release `v*` publishes a binary for
+each of them to the releases page:
+
+| File | Runs on |
+| --- | --- |
+| `opennetd-linux-amd64` | PCs and servers |
+| `opennetd-linux-arm64` | Raspberry Pi 3/4/5, ARM servers |
+| `opennetd-linux-arm-v7` | Older 32-bit ARM boards |
+| `opennetd-windows-amd64.exe` | Windows PCs |
+| `opennetd-windows-arm64.exe` | Windows on ARM |
+| `opennetd-darwin-amd64` | Intel Macs |
+| `opennetd-darwin-arm64` | Apple silicon Macs |
+| `opennetd-freebsd-amd64` | FreeBSD |
+| `opennetd-android-arm64` | Phones from the last decade, via Termux |
+| `opennetd-android-arm-v7` | Older 32-bit phones, via Termux |
+
+There is no `.apk`. A phone app needs an Android SDK, a manifest, and a
+signing key this repository does not have, and the protocol has no Wi-Fi
+Direct driver yet, so the app would do nothing the binary doesn't. The Android
+binaries run as-is under [Termux](https://termux.dev). When the radio drivers
+exist, an `.apk` belongs in the release alongside them.
 
 ## Status
 

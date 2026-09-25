@@ -58,6 +58,11 @@ jobs:
           CGO_ENABLED: "0"
         run: go build -o /dev/null ./cmd/opennetd
 
+  # The binaries a person downloads from the releases page. The same set the
+  # build job compiles, so a target that passes CI is a target someone can
+  # actually run. Android is a raw executable rather than an .apk: a phone app
+  # needs an SDK and a manifest this repo does not have, and the binary runs
+  # under Termux as-is.
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v')
@@ -68,12 +73,16 @@ jobs:
     strategy:
       matrix:
         include:
-          - { goos: linux,   goarch: amd64, suffix: "" }
-          - { goos: linux,   goarch: arm64, suffix: "" }
-          - { goos: windows, goarch: amd64, suffix: ".exe" }
-          - { goos: windows, goarch: arm64, suffix: ".exe" }
-          - { goos: darwin,  goarch: amd64, suffix: "" }
-          - { goos: darwin,  goarch: arm64, suffix: "" }
+          - { goos: linux,   goarch: amd64, goarm: "",  suffix: "" }
+          - { goos: linux,   goarch: arm64, goarm: "",  suffix: "" }
+          - { goos: linux,   goarch: arm,   goarm: "7", suffix: "" }
+          - { goos: windows, goarch: amd64, goarm: "",  suffix: ".exe" }
+          - { goos: windows, goarch: arm64, goarm: "",  suffix: ".exe" }
+          - { goos: darwin,  goarch: amd64, goarm: "",  suffix: "" }
+          - { goos: darwin,  goarch: arm64, goarm: "",  suffix: "" }
+          - { goos: freebsd, goarch: amd64, goarm: "",  suffix: "" }
+          - { goos: android, goarch: arm64, goarm: "",  suffix: "" }
+          - { goos: android, goarch: arm,   goarm: "7", suffix: "" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -83,10 +92,33 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
           CGO_ENABLED: "0"
         run: |
           mkdir -p dist
-          go build -ldflags "-s -w" -o "dist/opennetd-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}" ./cmd/opennetd
+          name="opennetd-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ -n "$GOARM" ]; then name="$name-v$GOARM"; fi
+          go build -ldflags "-s -w" -o "dist/${name}${{ matrix.suffix }}" ./cmd/opennetd
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opennetd-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}
+          path: dist/*
+          if-no-files-found: error
+
+  # One job attaches every binary, because the release action run from each
+  # matrix leg races on creating the release and drops assets.
+  publish:
+    name: Publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
