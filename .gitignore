@@ -1,0 +1,19 @@
+# Binaries and build output
+/opennetd
+/opennetd.exe
+/bin/
+/dist/
+
+# Node identity and authority keys. These are secrets; a committed authority
+# key is a compromised network.
+*.identity
+*.authority
+
+# Corpus files are data, not source.
+*.opennet
+
+# Go workspace cruft
+/vendor/
+*.test
+*.out
+coverage.*
